@@ -1,0 +1,11 @@
+# Ignore example backend folder (copasan prompting)
+backend_example/
+
+# Node modules
+node_modules/
+
+# Common temp/build files
+.env
+*.log
+*.aux
+*.pdf
