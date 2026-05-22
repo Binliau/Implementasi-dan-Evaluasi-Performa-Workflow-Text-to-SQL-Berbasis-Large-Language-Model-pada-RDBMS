@@ -109,9 +109,9 @@ SELECT
     COUNT(*) as transfer_count,
     SUM(t.jumlah) as total_quantity
 FROM transfer t
-JOIN gudang g1 ON t.dari_gudang_id = g1.id
-JOIN gudang g2 ON t.ke_gudang_id = g2.id
-GROUP BY g1.id, g1.nama_gudang, g2.id, g2.nama_gudang
+JOIN gudang g1 ON t.dari_gudang_id = g1.gudang_id
+JOIN gudang g2 ON t.ke_gudang_id = g2.gudang_id
+GROUP BY g1.gudang_id, g1.nama_gudang, g2.gudang_id, g2.nama_gudang
 ORDER BY transfer_count DESC;
 
 -- Monthly transfer summary

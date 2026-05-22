@@ -4,6 +4,7 @@
 // ============================================================================
 
 const express = require('express');
+const cors = require('cors');
 const mysql = require('mysql2/promise');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 require('dotenv').config();
@@ -42,34 +43,31 @@ const model = genAI.getGenerativeModel({
 // ============================================================================
 
 const DATABASE_INFO = `
-Database: inventory_kesehatan (Healthcare Inventory Management)
+Database: inventory_kesehatan (Sistem Manajemen Inventori Alat Kesehatan)
 
-Tables and Columns:
-1. gudang (id, nama_gudang, alamat, keterangan)
-2. barang (id, kode_barang, nama_barang, kategori_id, satuan, deskripsi)
-3. kategori_barang (id, nama_kategori, deskripsi)
-4. batch_stok (id, barang_id, gudang_id, jumlah, tanggal_kadaluarsa)
-5. restock (id, barang_id, gudang_id, jumlah, tanggal, nomor_batch, tanggal_kadaluarsa, user_id)
-6. penjualan (id, barang_id, gudang_id, jumlah, tanggal, harga_satuan, nama_pembeli, user_id)
-7. transfer (id, barang_id, dari_gudang_id, ke_gudang_id, jumlah, tanggal, user_id)
-8. users (id, username, nama_lengkap, role_id, password)
-9. roles (id, nama_role, deskripsi)
+PENTING - KONVENSI PENAMAAN:
+- Primary key di setiap tabel punya nama unik (bukan "id"), contoh: gudang_id, barang_id, dll
+- Foreign key di tabel lain mengikuti nama yang sama: barang_id, gudang_id, user_id
+- Selalu gunakan alias tabel saat query, contoh: SELECT b.barang_id FROM barang b
+- Gunakan WHERE aktif = TRUE untuk filter data aktif (soft delete pattern)
 
-Important relationships:
-- barang.kategori_id → kategori_barang.id
-- users.role_id → roles.id
-- batch_stok.barang_id → barang.id
-- batch_stok.gudang_id → gudang.id
-- restock.barang_id → barang.id
-- restock.gudang_id → gudang.id
-- restock.user_id → users.id
-- penjualan.barang_id → barang.id
-- penjualan.gudang_id → gudang.id
-- penjualan.user_id → users.id
-- transfer.barang_id → barang.id
-- transfer.dari_gudang_id → gudang.id
-- transfer.ke_gudang_id → gudang.id
-- transfer.user_id → users.id
+TABEL-TABEL:
+1. roles (role_id PK, nama_role, deskripsi)
+2. users (user_id PK, username, password_hash, nama_lengkap, role_id FK, aktif, dibuat_pada)
+3. gudang (gudang_id PK, nama_gudang, alamat, keterangan, aktif)
+4. kategori_barang (kategori_id PK, nama_kategori, deskripsi)
+5. barang (barang_id PK, kode_barang, nama_barang, kategori_id FK, satuan, deskripsi, aktif)
+6. batch_stok (batch_stok_id PK, barang_id FK, gudang_id FK, jumlah, tanggal_kadaluarsa)
+7. restock (restock_id PK, barang_id FK, gudang_id FK, jumlah, tanggal, nomor_batch, tanggal_kadaluarsa, user_id FK)
+8. transfer (transfer_id PK, barang_id FK, dari_gudang_id FK, ke_gudang_id FK, jumlah, tanggal, user_id FK)
+9. penjualan (penjualan_id PK, barang_id FK, gudang_id FK, jumlah, tanggal, harga_satuan, nama_pembeli, user_id FK)
+
+VIEWS TERSEDIA:
+- v_stok_per_gudang
+- v_total_stok
+- v_penjualan_lengkap
+- v_restock_lengkap
+- v_transfer_lengkap
 `;
 
 // ============================================================================

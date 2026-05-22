@@ -5,6 +5,9 @@
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+CREATE DATABASE IF NOT EXISTS inventory_kesehatan;
+USE inventory_kesehatan;
+
 -- Hapus VIEW dulu
 DROP VIEW IF EXISTS v_stok_per_gudang;
 DROP VIEW IF EXISTS v_total_stok;
