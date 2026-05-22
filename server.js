@@ -1,28 +1,30 @@
 // ============================================================================
-// SIMPLE SQL QUERY GENERATION API - BASIC VERSION
+// NL2SQL SMART ASSISTANT - ULTIMATE MERGE VERSION
 // Skripsi: Natural Language to SQL Query Generation
 // ============================================================================
 
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors'); // FIX: Tambahkan CORS agar frontend bisa akses
 const mysql = require('mysql2/promise');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-// Middleware untuk parse JSON
+app.use(cors());
 app.use(express.json());
 
 // ============================================================================
-// DATABASE CONNECTION (Local MySQL)
+// DATABASE CONNECTION
 // ============================================================================
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'rootpassword',
+  password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'inventory_kesehatan',
   port: process.env.DB_PORT || 3306,
   waitForConnections: true,
@@ -30,16 +32,16 @@ const pool = mysql.createPool({
 });
 
 // ============================================================================
-// AI SETUP (Google Gemini)
+// AI SETUP
 // ============================================================================
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-2.5-flash"  // Latest stable version
+  model: process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 });
 
 // ============================================================================
-// SCHEMA DATABASE (untuk context AI)
+// SCHEMA DATABASE (Versi Paling Akurat dari kodemu)
 // ============================================================================
 
 const DATABASE_INFO = `
@@ -71,188 +73,108 @@ VIEWS TERSEDIA:
 `;
 
 // ============================================================================
-// ENDPOINT 1: GENERATE QUERY
+// HELPER: Logging Eksperimen & Hitung Biaya Token
 // ============================================================================
 
-app.post('/api/generate-query', async (req, res) => {
+function logExperiment(entry) {
+  const logPath = path.join(__dirname, 'experiment_log.jsonl');
+  const line = JSON.stringify(entry) + '\n';
+  fs.appendFileSync(logPath, line, 'utf8');
+}
+
+function estimateCost(inputTokens, outputTokens) {
+  const INPUT_PRICE = 0.15;   // USD per 1M token
+  const OUTPUT_PRICE = 0.60;  // USD per 1M token
+  const costUsd = (inputTokens / 1_000_000) * INPUT_PRICE + (outputTokens / 1_000_000) * OUTPUT_PRICE;
+  return parseFloat(costUsd.toFixed(8));
+}
+
+// ============================================================================
+// ENDPOINT UTAMA: /api/ask (Menggabungkan Generate & Summarize + Metrik)
+// ============================================================================
+
+app.post('/api/ask', async (req, res) => {
+  const requestStart = Date.now();
+  const { question } = req.body;
+
+  if (!question) return res.status(400).json({ success: false, error: 'Pertanyaan tidak boleh kosong.' });
+
+  const timing = {};
+  const tokens = { input: 0, output: 0 };
+  let generatedSql = '';
+  let queryRows = [];
+  let finalAnswer = '';
+  let rowsFetched = 0;
+
   try {
-    const { question } = req.body;
-
-    if (!question) {
-      return res.status(400).json({
-        success: false,
-        error: 'Pertanyaan tidak boleh kosong'
-      });
-    }
-
-    console.log('📝 Question:', question);
-
-    // Prompt untuk AI
-    const prompt = `Anda adalah SQL query generator untuk sistem inventory alat kesehatan.
-
+    // --- TAHAP 1: GENERATE SQL ---
+    const sqlPrompt = `Anda adalah SQL query generator.
 ${DATABASE_INFO}
 
 Pertanyaan User: "${question}"
+Aturan: Hanya SELECT. Gunakan alias tabel. Sertakan WHERE aktif = TRUE. Gunakan VIEW jika relevan.
+Jawab HANYA dengan format JSON: {"sql": "SELECT ...", "explanation": "alasan query"}`;
 
-Buatlah SQL query MySQL yang menjawab pertanyaan tersebut.
-Response dalam format JSON berikut:
-{
-  "sql": "SELECT ... FROM ... WHERE ...",
-  "explanation": "Penjelasan singkat dalam Bahasa Indonesia"
-}
-
-Aturan:
-- Hanya SELECT query
-- Gunakan JOIN jika perlu menggabungkan tabel
-- Gunakan nama tabel/kolom yang sesuai schema di atas
-
-Response JSON:`;
-
-    // Kirim ke Gemini AI
-    const result = await model.generateContent(prompt);
-    const aiResponse = result.response.text();
-    console.log('AI Response:', aiResponse);
-
-    // Parse JSON dari response AI
-    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-    const parsedResponse = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-
-    if (!parsedResponse || !parsedResponse.sql) {
-      throw new Error('AI tidak menghasilkan SQL yang valid');
-    }
-
-    // Eksekusi SQL ke database
-    let data = [];
-    let row_count = 0;
-    try {
-      const [rows] = await pool.execute(parsedResponse.sql);
-      data = rows;
-      row_count = rows.length;
-      console.log(`Query executed, ${row_count} rows found`);
-    } catch (dbErr) {
-      console.error('SQL Execution Error:', dbErr.message);
-      // Tetap kembalikan SQL dan explanation, tapi data kosong dan error info
-      return res.json({
-        success: false,
-        question: question,
-        sql: parsedResponse.sql,
-        explanation: parsedResponse.explanation,
-        error: 'SQL execution error: ' + dbErr.message
-      });
-    }
-
-    res.json({
-      success: true,
-      question: question,
-      sql: parsedResponse.sql,
-      explanation: parsedResponse.explanation,
-      data: data,
-      row_count: row_count
-    });
-
-  } catch (error) {
-    console.error('ERROR:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ============================================================================
-// ENDPOINT 2: SUMMARIZE DATA
-// ============================================================================
-
-app.post('/api/summarize-data', async (req, res) => {
-  try {
-    const { query_description } = req.body;
-
-    if (!query_description) {
-      return res.status(400).json({
-        success: false,
-        error: 'Deskripsi query tidak boleh kosong'
-      });
-    }
-
-    console.log('Summarize request:', query_description);
-
-    // Step 1: Generate SQL menggunakan AI
-    const sqlPrompt = `${DATABASE_INFO}
-
-Pertanyaan: "${query_description}"
-
-Buatlah SELECT query MySQL. Response format JSON:
-{
-  "sql": "SELECT ... FROM ..."
-}`;
-
+    const t1Start = Date.now();
     const sqlResult = await model.generateContent(sqlPrompt);
-    const sqlText = sqlResult.response.text();
-    const sqlMatch = sqlText.match(/\{[\s\S]*\}/);
-    const sqlParsed = sqlMatch ? JSON.parse(sqlMatch[0]) : null;
+    timing.llm_sql_ms = Date.now() - t1Start;
 
-    if (!sqlParsed || !sqlParsed.sql) {
-      throw new Error('Gagal generate SQL');
-    }
+    const sqlUsage = sqlResult.response.usageMetadata;
+    tokens.input += sqlUsage?.promptTokenCount || 0;
+    tokens.output += sqlUsage?.candidatesTokenCount || 0;
 
-    const generatedSQL = sqlParsed.sql;
-    console.log('Generated SQL:', generatedSQL);
-
-    // Step 2: Execute SQL ke database
-    const [rows] = await pool.execute(generatedSQL);
-    console.log(`Query executed, ${rows.length} rows found`);
-
-    // Step 3: Summarize data dengan AI
-    const summaryPrompt = `Berikut adalah hasil query database:
-
-SQL Query: ${generatedSQL}
-Data (${rows.length} rows): ${JSON.stringify(rows.slice(0, 10))}
-
-Buatlah ringkasan data dalam Bahasa Indonesia yang mudah dipahami.
-Jelaskan apa yang ditunjukkan oleh data ini.
-
-Ringkasan:`;
-
-    const summaryResult = await model.generateContent(summaryPrompt);
-    const summary = summaryResult.response.text();
-
-    res.json({
-      success: true,
-      sql: generatedSQL,
-      data: rows,
-      row_count: rows.length,
-      summary: summary
-    });
-
-  } catch (error) {
-    console.error('ERROR:', error.message);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-// ============================================================================
-// ENDPOINT: Health Check
-// ============================================================================
-
-app.get('/api/health', async (req, res) => {
-  try {
-    // Test database
-    await pool.execute('SELECT 1');
+    const sqlMatch = sqlResult.response.text().match(/\{[\s\S]*\}/);
+    if (!sqlMatch) throw new Error('AI gagal menghasilkan JSON.');
     
+    const parsed = JSON.parse(sqlMatch[0]);
+    generatedSql = parsed.sql.trim();
+
+    // --- TAHAP 2: EKSEKUSI DATABASE ---
+    const t2Start = Date.now();
+    let dbError = null;
+    try {
+      const [rows] = await pool.execute(generatedSql);
+      queryRows = rows;
+      rowsFetched = rows.length;
+    } catch (err) {
+      dbError = err.message;
+    }
+    timing.db_query_ms = Date.now() - t2Start;
+
+    // --- TAHAP 3: GENERATE JAWABAN (SUMMARY) ---
+    const MAX_ROWS = 50; // Batasi data agar tidak boros token
+    const dataForSummary = queryRows.slice(0, MAX_ROWS);
+    
+    let summaryPrompt = dbError 
+      ? `Query gagal: ${dbError}. Jelaskan kegagalan ini ke user.`
+      : `Pertanyaan: "${question}". Data (${rowsFetched} baris): ${JSON.stringify(dataForSummary)}. Buat rangkuman jawaban bahasa Indonesia berdasarkan data ini.`;
+
+    const t3Start = Date.now();
+    const summaryResult = await model.generateContent(summaryPrompt);
+    timing.llm_summary_ms = Date.now() - t3Start;
+
+    const summaryUsage = summaryResult.response.usageMetadata;
+    tokens.input += summaryUsage?.promptTokenCount || 0;
+    tokens.output += summaryUsage?.candidatesTokenCount || 0;
+    finalAnswer = summaryResult.response.text().trim();
+
+    // --- KALKULASI FINAL & LOGGING ---
+    timing.total_ms = Date.now() - requestStart;
+    const costUsd = estimateCost(tokens.input, tokens.output);
+
+    logExperiment({
+      timestamp: new Date().toISOString(),
+      question, sql: generatedSql, rows_fetched: rowsFetched,
+      timing_ms: timing, tokens, cost_usd: costUsd, error: dbError
+    });
+
     res.json({
-      success: true,
-      message: 'Server berjalan dengan baik',
-      database: 'Connected',
-      ai: 'Gemini 2.0 Flash'
+      success: true, question, answer: finalAnswer, sql: generatedSql,
+      data: dataForSummary, metrics: { timing_ms: timing, tokens, cost_usd: costUsd }
     });
+
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -261,21 +183,11 @@ app.get('/api/health', async (req, res) => {
 // ============================================================================
 
 app.listen(PORT, async () => {
+  console.log(`📡 Server berjalan di http://localhost:${PORT}`);
   try {
-    // Test database connection
     await pool.execute('SELECT 1');
-    console.log('Database connected');
-    
-    console.log('Server started!');
-    console.log(`URL: http://localhost:${PORT}`);
-    console.log('');
-    console.log('Available Endpoints:');
-    console.log('   GET  /api/health');
-    console.log('   POST /api/generate-query');
-    console.log('   POST /api/summarize-data');
-    console.log('');
+    console.log('✅ Database terhubung');
   } catch (error) {
-    console.error('Database connection failed:', error.message);
-    console.log('Make sure MySQL is running and database exists!');
+    console.error('❌ Database gagal terhubung:', error.message);
   }
 });

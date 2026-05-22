@@ -1,0 +1,1 @@
+{"timestamp":"2026-05-22T07:11:53.371Z","question":"Ada berapa jumlah barang di database?","sql":"SELECT COUNT(b.barang_id) FROM barang AS b WHERE b.aktif = TRUE;","rows_fetched":1,"timing_ms":{"llm_sql_ms":2779,"db_query_ms":5,"llm_summary_ms":3580,"total_ms":6364},"tokens":{"input":580,"output":108},"cost_usd":0.0001518,"error":null}
