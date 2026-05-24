@@ -1,0 +1,285 @@
+=============================================================================
+DESKRIPSI SKEMA DATABASE: inventory_kesehatan
+Sistem Manajemen Inventori Alat Kesehatan Multi-Gudang
+=============================================================================
+
+ARSITEKTUR SISTEM:
+Terdapat dua sistem yang berjalan bersamaan:
+- Sistem 1 (Aplikasi Inventory): melakukan CRUD, termasuk meng-UPDATE
+  batch_stok.jumlah setiap ada penjualan, transfer, atau restock baru.
+- Sistem 2 (Smart Assistant / kamu): hanya READ ONLY. Membaca data
+  yang sudah dikelola Sistem 1.
+
+KONVENSI PENAMAAN — WAJIB DIIKUTI:
+- Primary key setiap tabel punya nama UNIK, bukan "id" generik.
+  Contoh: gudang_id, barang_id, user_id, penjualan_id, dst.
+- Foreign key di tabel lain mengikuti nama PK yang sama.
+  Contoh: batch_stok.barang_id merujuk ke barang.barang_id
+- JOIN harus simetris: ON b.kategori_id = kb.kategori_id
+  BUKAN: ON b.kategori_id = kb.id  (SALAH)
+- Selalu gunakan alias tabel saat query lebih dari 1 tabel.
+  Contoh: SELECT b.barang_id, b.nama_barang FROM barang b
+- Filter data aktif: WHERE aktif = TRUE (atau aktif = 1)
+- Hanya boleh membuat SELECT query. Dilarang INSERT, UPDATE, DELETE, DROP.
+
+=============================================================================
+TABEL-TABEL
+=============================================================================
+
+1. roles
+   PK: role_id
+   Kolom:
+     - role_id       INT           Primary key
+     - nama_role     VARCHAR(50)   Nama peran. Nilai: 'Super Admin', 'Admin',
+                                   'Manajer Gudang', 'Supervisor', 'Staf Gudang',
+                                   'Kasir', 'Viewer'
+     - deskripsi     TEXT          Penjelasan hak akses peran
+   Catatan: Hierarki akses Super Admin > Admin > Manajer Gudang > Supervisor
+            > Staf Gudang/Kasir > Viewer
+
+2. kategori_barang
+   PK: kategori_id
+   Kolom:
+     - kategori_id   INT           Primary key
+     - nama_kategori VARCHAR(100)  Kategori barang. Nilai yang ada:
+                                   'Alat Medis' (id=1), 'Obat-obatan' (id=2),
+                                   'Bahan Habis Pakai' (id=3),
+                                   'Reagen Laboratorium' (id=4),
+                                   'Vitamin & Suplemen' (id=5),
+                                   'Kosmetik Medis' (id=6),
+                                   'Alat Kesehatan' (id=7)
+     - deskripsi     TEXT          Penjelasan kategori
+
+3. users
+   PK: user_id
+   FK: role_id → roles.role_id
+   Kolom:
+     - user_id       INT           Primary key
+     - username      VARCHAR(50)   Username login, unik
+     - password_hash VARCHAR(255)  Password terenkripsi bcrypt
+     - nama_lengkap  VARCHAR(100)  Nama lengkap pengguna
+     - role_id       INT           FK ke roles.role_id
+     - aktif         BOOLEAN       TRUE(1)=aktif bisa login, FALSE(0)=nonaktif
+     - dibuat_pada   TIMESTAMP     Waktu pembuatan akun
+   Query pengguna aktif: WHERE aktif = TRUE
+   Query pengguna nonaktif: WHERE aktif = FALSE
+
+4. gudang
+   PK: gudang_id
+   Kolom:
+     - gudang_id     INT           Primary key
+     - nama_gudang   VARCHAR(100)  Nama gudang. Contoh: 'Gudang Utama Jakarta',
+                                   'Gudang Regional Surabaya', 'Gudang Klinik Bandung',
+                                   'Gudang Regional Medan', 'Gudang Utama Makassar',
+                                   'Gudang Regional Palembang'
+     - alamat        TEXT          Alamat fisik gudang
+     - keterangan    TEXT          Info kapasitas dan fasilitas
+     - aktif         BOOLEAN       TRUE(1)=aktif beroperasi, FALSE(0)=tutup
+   Catatan: Ada 7 gudang total, 6 aktif, 1 nonaktif (Gudang Cabang Denpasar)
+   Query gudang aktif: WHERE aktif = TRUE
+
+5. barang
+   PK: barang_id
+   FK: kategori_id → kategori_barang.kategori_id
+   Kolom:
+     - barang_id     INT           Primary key
+     - kode_barang   VARCHAR(50)   Kode unik. Format: [KATEGORI]-[NAMA]-[NOMOR]
+                                   Contoh: 'OBT-PARA-500', 'BHP-MASK-001'
+     - nama_barang   VARCHAR(255)  Nama lengkap barang dan spesifikasi
+     - kategori_id   INT           FK ke kategori_barang.kategori_id
+     - satuan        VARCHAR(50)   Satuan jual: pcs, strip, botol, box, roll,
+                                   pasang, set, unit, kit
+     - deskripsi     TEXT          Spesifikasi teknis
+     - aktif         BOOLEAN       TRUE(1)=aktif dijual, FALSE(0)=diskontinyu
+   Catatan: 46 barang total, 45 aktif, 1 nonaktif (soft delete)
+   Query barang aktif: WHERE aktif = TRUE
+
+6. batch_stok
+   PK: batch_stok_id
+   FK: barang_id → barang.barang_id
+       gudang_id → gudang.gudang_id
+   Kolom:
+     - batch_stok_id      INT    Primary key
+     - barang_id          INT    FK ke barang.barang_id
+     - gudang_id          INT    FK ke gudang.gudang_id
+     - jumlah             INT    SISA STOK SEKARANG (diupdate Sistem 1
+                                 setiap ada penjualan/transfer/restock)
+     - tanggal_kadaluarsa DATE   NULL = tidak kedaluwarsa (alat medis)
+   Catatan: jumlah = stok aktual saat ini, bukan stok awal.
+            Satu barang bisa punya beberapa batch dengan tanggal kadaluarsa
+            berbeda (FIFO). Total stok = SUM(jumlah) GROUP BY barang_id, gudang_id
+            Ada 111 batch_stok records.
+
+7. restock
+   PK: restock_id
+   FK: barang_id → barang.barang_id
+       gudang_id → gudang.gudang_id
+       user_id   → users.user_id
+   Kolom:
+     - restock_id         INT          Primary key
+     - barang_id          INT          FK ke barang.barang_id
+     - gudang_id          INT          FK ke gudang.gudang_id
+     - jumlah             INT          Jumlah unit yang diterima dari supplier
+     - tanggal            DATE         Tanggal penerimaan barang (YYYY-MM-DD)
+     - nomor_batch        VARCHAR(100) Nomor batch supplier. Format:
+                                       [KODE][TAHUN][BULAN][KODE_GUDANG][URUT]
+                                       Contoh: 'MASK2401JKT001'
+     - tanggal_kadaluarsa DATE         Kedaluwarsa batch. NULL jika tidak ada
+     - user_id            INT          FK ke users.user_id (pencatat)
+   Catatan: Log historis pengadaan dari supplier. Tidak pernah diubah setelah
+            dicatat. Ada 118 restock records (Jan 2024 - Mei 2024).
+
+8. transfer
+   PK: transfer_id
+   FK: barang_id      → barang.barang_id
+       dari_gudang_id → gudang.gudang_id  (PENGIRIM)
+       ke_gudang_id   → gudang.gudang_id  (PENERIMA)
+       user_id        → users.user_id
+   Kolom:
+     - transfer_id    INT    Primary key
+     - barang_id      INT    FK ke barang.barang_id
+     - dari_gudang_id INT    FK ke gudang.gudang_id — gudang PENGIRIM
+     - ke_gudang_id   INT    FK ke gudang.gudang_id — gudang PENERIMA
+     - jumlah         INT    Jumlah unit yang dipindahkan
+     - tanggal        DATE   Tanggal transfer (YYYY-MM-DD)
+     - user_id        INT    FK ke users.user_id (pencatat)
+   Catatan: Pergerakan barang antar gudang internal. Ada 65 transfer records
+            (Jan 2024 - Feb 2025). Tabel ini punya DUA FK ke gudang dengan
+            nama berbeda: dari_gudang_id dan ke_gudang_id.
+   Contoh JOIN yang benar:
+     JOIN gudang g_dari ON t.dari_gudang_id = g_dari.gudang_id
+     JOIN gudang g_ke   ON t.ke_gudang_id   = g_ke.gudang_id
+
+9. penjualan
+   PK: penjualan_id
+   FK: barang_id → barang.barang_id
+       gudang_id → gudang.gudang_id
+       user_id   → users.user_id
+   Kolom:
+     - penjualan_id   INT             Primary key
+     - barang_id      INT             FK ke barang.barang_id
+     - gudang_id      INT             FK ke gudang.gudang_id
+     - jumlah         INT             Jumlah unit terjual
+     - tanggal        DATE            Tanggal transaksi (YYYY-MM-DD)
+     - harga_satuan   DECIMAL(12,2)   Harga per unit dalam Rupiah (IDR)
+     - nama_pembeli   VARCHAR(255)    Nama pembeli: rumah sakit, klinik,
+                                      apotek, puskesmas, atau individu
+     - user_id        INT             FK ke users.user_id (pencatat/kasir)
+   Catatan: 240 transaksi total (Jan 2024 - Feb 2025).
+            Total pendapatan = SUM(jumlah * harga_satuan) dalam Rupiah.
+
+=============================================================================
+VIEW TERSEDIA — GUNAKAN INI UNTUK QUERY KOMPLEKS
+=============================================================================
+View menggabungkan JOIN yang rumit sehingga query lebih sederhana dan akurat.
+
+1. v_stok_per_gudang
+   Tujuan: Stok per batch dengan status kedaluwarsa
+   Kolom: batch_stok_id AS batch_id, barang_id, kode_barang, nama_barang,
+          kategori_id, nama_kategori, satuan, gudang_id, nama_gudang,
+          jumlah AS stok_tersedia, tanggal_kadaluarsa,
+          status_kedaluwarsa ('Tidak Kedaluwarsa'/'Kedaluwarsa'/
+                              'Hampir Kedaluwarsa'/'Masih Baik')
+   Gunakan untuk: "stok masker di Jakarta", "batch yang hampir kedaluwarsa"
+   Contoh: SELECT nama_barang, nama_gudang, stok_tersedia, status_kedaluwarsa
+           FROM v_stok_per_gudang WHERE nama_barang LIKE '%Masker%';
+
+2. v_total_stok
+   Tujuan: Total stok sekarang per barang per gudang (semua batch dijumlah)
+   Kolom: barang_id, kode_barang, nama_barang, kategori_id, nama_kategori,
+          satuan, gudang_id, nama_gudang,
+          stok_sekarang (total stok saat ini),
+          stok_belum_kadaluarsa (stok yang masih layak jual),
+          stok_kadaluarsa (stok yang sudah lewat batas)
+   Gunakan untuk: "total stok paracetamol", "gudang mana stok masker terbanyak"
+   Contoh: SELECT nama_gudang, stok_sekarang FROM v_total_stok
+           WHERE nama_barang LIKE '%Paracetamol%' ORDER BY stok_sekarang DESC;
+
+3. v_penjualan_lengkap
+   Tujuan: Penjualan lengkap dengan detail barang, kategori, gudang, nilai
+   Kolom: penjualan_id, tanggal, bulan (format YYYY-MM), tahun,
+          barang_id, kode_barang, nama_barang, kategori_id, nama_kategori,
+          satuan, gudang_id, nama_gudang,
+          jumlah_terjual, harga_satuan,
+          total_nilai (jumlah * harga_satuan dalam Rupiah),
+          nama_pembeli, user_id, nama_user, role_user
+   Gunakan untuk: "total penjualan bulan ini", "penjualan per kategori",
+                  "pembeli terbesar", "pendapatan per gudang"
+   Contoh: SELECT bulan, SUM(total_nilai) AS pendapatan
+           FROM v_penjualan_lengkap WHERE tahun = '2024'
+           GROUP BY bulan ORDER BY bulan;
+
+4. v_restock_lengkap
+   Tujuan: Riwayat restock dengan detail barang dan gudang
+   Kolom: restock_id, tanggal, bulan, tahun, barang_id, kode_barang,
+          nama_barang, kategori_id, nama_kategori, satuan,
+          gudang_id, nama_gudang, jumlah_restock, nomor_batch,
+          tanggal_kadaluarsa, user_id, dicatat_oleh
+   Gunakan untuk: "kapan terakhir restock amoxicillin",
+                  "total pengadaan per bulan"
+   Contoh: SELECT nama_barang, MAX(tanggal) AS restock_terakhir
+           FROM v_restock_lengkap GROUP BY barang_id, nama_barang;
+
+5. v_transfer_lengkap
+   Tujuan: Transfer antar gudang dengan nama gudang asal dan tujuan
+   Kolom: transfer_id, tanggal, bulan, tahun, barang_id, kode_barang,
+          nama_barang, kategori_id, nama_kategori, satuan,
+          dari_gudang_id, gudang_asal, ke_gudang_id, gudang_tujuan,
+          jumlah_transfer, user_id, dicatat_oleh
+   Gunakan untuk: "transfer dari Jakarta ke Surabaya",
+                  "barang paling sering ditransfer"
+   Contoh: SELECT gudang_asal, gudang_tujuan, SUM(jumlah_transfer) AS total
+           FROM v_transfer_lengkap GROUP BY dari_gudang_id, ke_gudang_id
+           ORDER BY total DESC;
+
+=============================================================================
+PANDUAN QUERY PENTING
+=============================================================================
+
+RELASI FOREIGN KEY (nama kolom simetris):
+  barang.kategori_id         → kategori_barang.kategori_id
+  users.role_id              → roles.role_id
+  batch_stok.barang_id       → barang.barang_id
+  batch_stok.gudang_id       → gudang.gudang_id
+  restock.barang_id          → barang.barang_id
+  restock.gudang_id          → gudang.gudang_id
+  restock.user_id            → users.user_id
+  transfer.barang_id         → barang.barang_id
+  transfer.dari_gudang_id    → gudang.gudang_id  ← PENGIRIM
+  transfer.ke_gudang_id      → gudang.gudang_id  ← PENERIMA
+  penjualan.barang_id        → barang.barang_id
+  penjualan.gudang_id        → gudang.gudang_id
+  penjualan.user_id          → users.user_id
+
+SOFT DELETE PATTERN:
+  Selalu tambahkan filter aktif untuk barang dan gudang:
+  WHERE b.aktif = TRUE AND g.aktif = TRUE
+  atau: WHERE b.aktif = 1 AND g.aktif = 1
+
+MENGHITUNG TOTAL STOK:
+  Gunakan v_total_stok (kolom stok_sekarang)
+  ATAU: SELECT SUM(jumlah) FROM batch_stok WHERE barang_id=X AND gudang_id=Y
+
+MENGHITUNG PENDAPATAN:
+  total per transaksi = jumlah * harga_satuan
+  total keseluruhan   = SUM(jumlah * harga_satuan) FROM penjualan
+
+FILTER TANGGAL:
+  Per bulan : WHERE DATE_FORMAT(tanggal, '%Y-%m') = '2024-06'
+  Per tahun : WHERE YEAR(tanggal) = 2024
+  Range     : WHERE tanggal BETWEEN '2024-01-01' AND '2024-06-30'
+
+TRANSFER - CARA JOIN YANG BENAR (dua FK ke tabel gudang):
+  FROM transfer t
+  JOIN gudang g_dari ON t.dari_gudang_id = g_dari.gudang_id
+  JOIN gudang g_ke   ON t.ke_gudang_id   = g_ke.gudang_id
+
+=============================================================================
+STATISTIK DATA
+=============================================================================
+  - 7 roles, 24 users (23 aktif), 7 gudang (6 aktif)
+  - 7 kategori barang, 46 barang (45 aktif)
+  - 111 batch_stok, 118 restock, 65 transfer, 240 penjualan
+  - Periode data: Januari 2024 - Februari 2025
+  - Gudang: Jakarta, Surabaya, Bandung, Medan, Makassar, Palembang
+            (Denpasar nonaktif)

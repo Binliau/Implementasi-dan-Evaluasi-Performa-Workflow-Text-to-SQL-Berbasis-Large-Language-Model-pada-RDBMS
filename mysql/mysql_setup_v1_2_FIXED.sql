@@ -9,6 +9,15 @@
 --   - Saat query langsung ke tabel, gunakan alias tabel:
 --     contoh: SELECT b.barang_id, b.nama_barang FROM barang b (bukan SELECT id FROM barang)
 -- ============================================================================
+-- ARSITEKTUR DUA SISTEM:
+--   Sistem 1 (Aplikasi Inventory - CRUD):
+--     Melakukan INSERT/UPDATE/DELETE pada semua tabel.
+--     Setiap kali ada penjualan/transfer/restock, Sistem 1 meng-UPDATE
+--     batch_stok.jumlah agar selalu mencerminkan sisa stok sekarang.
+--   Sistem 2 (Smart Assistant - READ ONLY):
+--     Hanya SELECT. Membaca batch_stok.jumlah sebagai stok saat ini.
+--     Tidak perlu hitung sendiri dari transaksi karena Sistem 1 sudah update.
+-- ============================================================================
 
 CREATE DATABASE IF NOT EXISTS inventory_kesehatan
   DEFAULT CHARACTER SET utf8mb4
@@ -77,7 +86,7 @@ CREATE TABLE IF NOT EXISTS batch_stok (
     tanggal_kadaluarsa  DATE                           COMMENT 'Tanggal kedaluwarsa batch. NULL = tidak kedaluwarsa (umumnya alat medis/alat kesehatan). Batch kedaluwarsa: tanggal_kadaluarsa < CURDATE()',
     FOREIGN KEY (barang_id) REFERENCES barang(barang_id),
     FOREIGN KEY (gudang_id) REFERENCES gudang(gudang_id)
-) COMMENT = 'Stok fisik per batch di gudang. PANDUAN LLM: 1) Total fisik keseluruhan = SUM(jumlah). 2) Stok Valid (layak jual/belum expired) = SUM(jumlah) WHERE tanggal_kadaluarsa IS NULL OR tanggal_kadaluarsa >= CURDATE(). 3) Stok Kedaluwarsa (tidak bisa dijual) = SUM(jumlah) WHERE tanggal_kadaluarsa < CURDATE()';
+) COMMENT = 'Stok barang per batch di tiap gudang. jumlah = sisa stok sekarang, diupdate Sistem 1 setiap ada penjualan/transfer/restock. Satu barang bisa punya beberapa batch dengan tanggal kadaluarsa berbeda (FIFO). Total stok sekarang = SUM(jumlah) GROUP BY barang_id, gudang_id';
 
 -- ============================================================================
 -- TABEL TRANSAKSI
@@ -95,7 +104,7 @@ CREATE TABLE IF NOT EXISTS restock (
     FOREIGN KEY (barang_id) REFERENCES barang(barang_id),
     FOREIGN KEY (gudang_id) REFERENCES gudang(gudang_id),
     FOREIGN KEY (user_id)   REFERENCES users(user_id)
-) COMMENT = 'Riwayat pengadaan barang masuk dari supplier. Setiap baris = satu transaksi penerimaan barang ke gudang';
+) COMMENT = 'Log historis pengadaan barang dari supplier. Setiap baris = satu transaksi masuk. Mencatat kapan, berapa, nomor batch, dan siapa yang mencatat. BERBEDA dengan batch_stok: restock tidak berubah setelah dicatat, sedangkan batch_stok.jumlah diupdate Sistem 1 setiap ada transaksi';
 
 CREATE TABLE IF NOT EXISTS transfer (
     transfer_id              INT AUTO_INCREMENT PRIMARY KEY COMMENT 'Primary key tabel transfer',
@@ -131,8 +140,9 @@ CREATE TABLE IF NOT EXISTS penjualan (
 -- Semua kolom "id" di-alias eksplisit: barang_id, gudang_id, penjualan_id, dll
 -- ============================================================================
 
--- View 1: Stok per batch lengkap dengan status kedaluwarsa
--- Gunakan untuk: "stok masker di Jakarta", "barang yang hampir kedaluwarsa"
+-- View 1: Stok per batch dengan status kedaluwarsa
+-- batch_stok.jumlah = stok sekarang (diupdate Sistem 1 setiap ada transaksi)
+-- Gunakan untuk: "stok masker di Jakarta", "batch mana yang hampir kedaluwarsa"
 CREATE OR REPLACE VIEW v_stok_per_gudang AS
 SELECT
     bs.batch_stok_id                  AS batch_id,
@@ -163,6 +173,12 @@ WHERE     b.aktif = TRUE
 -- View 2: Total stok valid vs kedaluwarsa per barang per gudang
 -- Gunakan untuk: "total stok paracetamol", "gudang mana stok masker paling banyak"
 CREATE OR REPLACE VIEW v_total_stok AS
+-- ============================================================
+-- Stok sekarang langsung dari batch_stok.jumlah
+-- batch_stok.jumlah diupdate oleh sistem inventory (Sistem 1)
+-- setiap ada transaksi penjualan, transfer, atau restock baru.
+-- Smart assistant (Sistem 2) hanya membaca nilai ini.
+-- ============================================================
 SELECT
     b.barang_id,
     b.kode_barang,
@@ -172,13 +188,13 @@ SELECT
     b.satuan,
     g.gudang_id,
     g.nama_gudang,
-    SUM(bs.jumlah)                                                            AS total_stok,
+    SUM(bs.jumlah)                                   AS stok_sekarang,
     SUM(CASE WHEN bs.tanggal_kadaluarsa IS NULL
-              OR  bs.tanggal_kadaluarsa >= CURDATE() THEN bs.jumlah
-             ELSE 0 END)                                                      AS stok_valid,
+              OR  bs.tanggal_kadaluarsa >= CURDATE()
+             THEN bs.jumlah ELSE 0 END)              AS stok_belum_kadaluarsa,
     SUM(CASE WHEN bs.tanggal_kadaluarsa IS NOT NULL
-             AND  bs.tanggal_kadaluarsa <  CURDATE() THEN bs.jumlah
-             ELSE 0 END)                                                      AS stok_kedaluwarsa
+             AND  bs.tanggal_kadaluarsa <  CURDATE()
+             THEN bs.jumlah ELSE 0 END)              AS stok_kadaluarsa
 FROM      batch_stok      bs
 JOIN      barang          b  ON bs.barang_id  = b.barang_id
 JOIN      kategori_barang kb ON b.kategori_id = kb.kategori_id
