@@ -76,12 +76,12 @@ function logExperiment(entry) {
 //   Output: $0.60 / 1M token
 //
 // Dipisah per tahap agar bisa menjawab pertanyaan riset:
-//   - Apakah cost didominasi jumlah data di-query? → lihat tahap3.input_tokens
-//     (makin banyak rows_to_llm, makin besar token input Tahap 3)
-//   - Apakah cost didominasi kompleksitas query?   → lihat tahap1.output_tokens
-//     (query kompleks → SQL lebih panjang → output token Tahap 1 lebih besar)
+//   - Apakah cost didominasi jumlah data di-query? → lihat summarize_answer.input_tokens
+//     (makin banyak rows_to_llm, makin besar token input Summarize Answer)
+//   - Apakah cost didominasi kompleksitas query?   → lihat generate_sql.output_tokens
+//     (query kompleks → SQL lebih panjang → output token Generate SQL lebih besar)
 //   - Apakah cost didominasi jumlah data ditampilkan? → bandingkan
-//     rows_fetched vs rows_to_llm vs tahap3.input_tokens
+//     rows_fetched vs rows_to_llm vs summarize_answer.input_tokens
 // ============================================================================
 
 const INPUT_PRICE_PER_M  = 0.15;
@@ -95,12 +95,12 @@ function calcCost(inputTokens, outputTokens) {
 }
 
 function buildTokenCostBreakdown(t1Input, t1Output, t3Input, t3Output) {
-  const tahap1 = {
+  const generate_sql = {
     input_tokens:  t1Input,
     output_tokens: t1Output,
     cost_usd:      calcCost(t1Input, t1Output),
   };
-  const tahap3 = {
+  const summarize_answer = {
     input_tokens:  t3Input,
     output_tokens: t3Output,
     cost_usd:      calcCost(t3Input, t3Output),
@@ -112,7 +112,7 @@ function buildTokenCostBreakdown(t1Input, t1Output, t3Input, t3Output) {
     cost_output_usd: parseFloat(((t1Output + t3Output) / 1_000_000 * OUTPUT_PRICE_PER_M).toFixed(8)),
     cost_usd:      calcCost(t1Input + t3Input, t1Output + t3Output),
   };
-  return { tahap1, tahap3, total };
+  return { generate_sql, summarize_answer, total };
 }
 
 // ============================================================================
@@ -306,9 +306,9 @@ berdasarkan data di atas. Jika data kosong, sampaikan tidak ada data yang sesuai
     // LOG KE FILE — struktur lengkap untuk analisis Bab 4
     //
     // Variabel yang bisa dianalisis korelasi-nya:
-    //   complexity      vs tahap1.output_tokens  → kompleksitas query
-    //   rows_fetched    vs tahap3.input_tokens   → jumlah data di-query
-    //   rows_to_llm     vs tahap3.input_tokens   → jumlah data ditampilkan
+    //   complexity      vs generate_sql.output_tokens  → kompleksitas query
+    //   rows_fetched    vs summarize_answer.input_tokens   → jumlah data di-query
+    //   rows_to_llm     vs summarize_answer.input_tokens   → jumlah data ditampilkan
     //   total.cost_usd  vs semua faktor di atas  → dominasi biaya
     // ─────────────────────────────────────────────────────────────────────
 

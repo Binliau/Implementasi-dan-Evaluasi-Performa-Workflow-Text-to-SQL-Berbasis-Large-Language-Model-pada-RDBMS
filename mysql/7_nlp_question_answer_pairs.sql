@@ -444,8 +444,8 @@ ORDER BY total_2024 DESC;
 -- Pertanyaan: "Tampilkan total stok valid per kategori"
 -- Tanpa VIEW butuh 3 JOIN, dengan VIEW langsung 1 baris
 SELECT nama_kategori,
-       SUM(stok_valid)       AS total_stok_valid,
-       SUM(stok_kedaluwarsa) AS total_stok_kedaluwarsa
+       SUM(stok_belum_kadaluarsa)       AS total_stok_valid,
+       SUM(stok_kadaluwarsa) AS total_stok_kdaluwarsa
 FROM v_total_stok
 GROUP BY kategori_id, nama_kategori
 ORDER BY total_stok_valid DESC;

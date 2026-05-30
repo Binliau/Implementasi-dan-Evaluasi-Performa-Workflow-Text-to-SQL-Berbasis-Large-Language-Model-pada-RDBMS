@@ -8,7 +8,7 @@ USE inventory_kesehatan;
 
 -- ============================================================================
 -- SCHEMA REFERENCE:
--- transfer (id, barang_id, dari_gudang_id, ke_gudang_id, jumlah, tanggal, user_id)
+-- transfer (barang_id, dari_gudang_id, ke_gudang_id, jumlah, tanggal, user_id)
 -- ============================================================================
 
 -- ============================================================================
