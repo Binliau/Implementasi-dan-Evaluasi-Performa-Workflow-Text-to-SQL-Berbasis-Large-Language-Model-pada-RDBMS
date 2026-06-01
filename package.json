@@ -8,12 +8,18 @@
     "test": "node test-api.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "mysql2": "^3.6.5",
     "@google/generative-ai": "^0.2.1",
-    "dotenv": "^16.3.1"
+    "cors": "^2.8.6",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "mysql2": "^3.6.5"
   },
-  "keywords": ["sql", "ai", "gemini", "query-generator"],
+  "keywords": [
+    "sql",
+    "ai",
+    "gemini",
+    "query-generator"
+  ],
   "author": "",
   "license": "MIT"
 }

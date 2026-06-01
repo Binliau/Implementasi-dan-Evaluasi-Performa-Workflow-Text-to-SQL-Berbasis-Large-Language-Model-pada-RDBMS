@@ -73,7 +73,7 @@ function logExperiment(entry) {
 // HELPER: Hitung cost per tahap secara terpisah
 // Harga Gemini 2.5 Flash (Mei 2025):
 //   Input : $0.15 / 1M token
-//   Output: $0.60 / 1M token
+//   Output: $1.25 / 1M token
 //
 // Dipisah per tahap agar bisa menjawab pertanyaan riset:
 //   - Apakah cost didominasi jumlah data di-query? → lihat summarize_answer.input_tokens
@@ -85,7 +85,7 @@ function logExperiment(entry) {
 // ============================================================================
 
 const INPUT_PRICE_PER_M  = 0.15;
-const OUTPUT_PRICE_PER_M = 0.60;
+const OUTPUT_PRICE_PER_M = 1.25;
 
 function calcCost(inputTokens, outputTokens) {
   return parseFloat((
@@ -120,21 +120,7 @@ function buildTokenCostBreakdown(t1Input, t1Output, t3Input, t3Output) {
 // Berdasarkan standar Spider benchmark (Yu et al., 2018)
 // ============================================================================
 
-function classifyQueryComplexity(sql) {
-  if (!sql) return 'unknown';
-  const u = sql.toUpperCase();
-  const joins    = (u.match(/\bJOIN\b/g) || []).length;
-  const subquery = (u.match(/\bSELECT\b/g) || []).length > 1;
-  const union    = u.includes('UNION');
-  const window   = u.includes('OVER(') || (u.includes('OVER') && u.includes('PARTITION'));
-  const groupBy  = u.includes('GROUP BY');
-  const having   = u.includes('HAVING');
-  const agg      = /\b(SUM|COUNT|AVG|MAX|MIN)\s*\(/.test(u);
-
-  if (subquery || union || window || joins >= 4) return 'hard';
-  if (groupBy  || having || (agg && joins >= 2) || joins >= 2) return 'medium';
-  return 'easy';
-}
+const { classifyQueryComplexity } = require('./classifyQueryComplexity'); 
 
 // ============================================================================
 // ENDPOINT UTAMA: POST /api/ask
@@ -215,8 +201,16 @@ Jawab HANYA dengan JSON berikut, tanpa teks tambahan, tanpa markdown:
     generatedSql   = parsed.sql.trim();
     sqlExplanation = parsed.explanation || '';
 
+    // Pastikan diawali dengan SELECT
     if (!generatedSql.toUpperCase().startsWith('SELECT')) {
       throw new Error('LLM menghasilkan query non-SELECT: ' + generatedSql);
+    }
+
+    // Cegah Multiple Statements dan DML/DDL (SQL Injection Guardrail)
+    // Regex ini mencari apakah ada perintah berbahaya setelah spasi atau titik koma
+    const forbiddenKeywords = /;\s*(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|REPLACE)\b/i;
+    if (forbiddenKeywords.test(generatedSql)) {
+      throw new Error('Keamanan: Terdeteksi percobaan modifikasi data (SQL Injection). Query ditolak!');
     }
 
     const complexity = classifyQueryComplexity(generatedSql);

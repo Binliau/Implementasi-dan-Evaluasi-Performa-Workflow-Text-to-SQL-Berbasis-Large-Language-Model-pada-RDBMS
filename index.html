@@ -1,481 +1,247 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Asisten Inventori Kesehatan</title>
+  <meta charset="UTF-8">
+  <title>Sistem Asisten Inventori</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f0f2f5;
-      height: 100vh;
+      font-family: sans-serif;
+      max-width: 700px;
+      margin: 20px auto;
+      padding: 10px;
+      background-color: #f9f9f9;
+    }
+    
+    /* Header & Tombol Skema */
+    .header-container {
       display: flex;
-      flex-direction: column;
+      justify-content: space-between;
       align-items: center;
-      justify-content: center;
+      margin-bottom: 5px;
     }
+    h2 { color: #333; margin: 0; }
+    .schema-btn {
+      background: #10b981; color: white; border: none; 
+      padding: 8px 12px; border-radius: 5px; cursor: pointer; font-size: 13px;
+    }
+    .schema-btn:hover { background: #059669; }
+    
+    #status { font-size: 12px; color: #666; margin-bottom: 15px; }
 
-    .container {
-      width: 100%;
-      max-width: 780px;
-      height: 92vh;
-      background: #fff;
-      border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    /* ── Header ── */
-    .header {
-      background: #1a56db;
-      color: #fff;
-      padding: 16px 24px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .header-icon { font-size: 24px; }
-    .header-title { font-size: 17px; font-weight: 600; }
-    .header-sub   { font-size: 12px; opacity: 0.8; margin-top: 2px; }
-    .status-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #4ade80; margin-left: auto; margin-right: 4px;
-    }
-    .status-text { font-size: 12px; opacity: 0.85; }
-
-    /* ── Chat area ── */
-    .chat-area {
-      flex: 1;
-      overflow-y: auto;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .message {
-      display: flex;
-      gap: 10px;
-      align-items: flex-start;
-      max-width: 90%;
-    }
-    .message.user   { flex-direction: row-reverse; align-self: flex-end; }
-    .message.bot    { align-self: flex-start; }
-
-    .avatar {
-      width: 34px; height: 34px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px; flex-shrink: 0;
-    }
-    .message.user .avatar { background: #1a56db; color: #fff; }
-    .message.bot  .avatar { background: #f3f4f6; }
-
-    .bubble {
-      padding: 11px 15px;
-      border-radius: 14px;
-      font-size: 14px;
-      line-height: 1.55;
-    }
-    .message.user .bubble {
-      background: #1a56db;
-      color: #fff;
-      border-bottom-right-radius: 4px;
-    }
-    .message.bot .bubble {
-      background: #f3f4f6;
-      color: #111;
-      border-bottom-left-radius: 4px;
-    }
-    .message.bot .bubble.error {
-      background: #fef2f2;
-      color: #b91c1c;
-    }
-
-    /* SQL detail (collapsible) */
-    .sql-block {
-      margin-top: 10px;
-      font-size: 12px;
-    }
-    .sql-block summary {
-      cursor: pointer;
-      color: #6b7280;
-      user-select: none;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .sql-block summary:hover { color: #1a56db; }
-    .sql-code {
-      margin-top: 6px;
-      background: #1e293b;
-      color: #e2e8f0;
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-family: 'Courier New', monospace;
-      white-space: pre-wrap;
-      word-break: break-all;
-      font-size: 12px;
-    }
-    .metrics-row {
-      margin-top: 8px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .badge {
-      background: #eff6ff;
-      color: #1d4ed8;
-      border-radius: 999px;
-      padding: 2px 9px;
-      font-size: 11px;
-      font-weight: 500;
-    }
-    .badge.green  { background: #f0fdf4; color: #15803d; }
-    .badge.purple { background: #faf5ff; color: #7e22ce; }
-    .badge.orange { background: #fff7ed; color: #c2410c; }
-
-    /* Table hasil query */
-    .result-table-wrap {
-      margin-top: 10px;
-      overflow-x: auto;
-      border-radius: 8px;
-      border: 1px solid #e5e7eb;
-    }
-    .result-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-    .result-table th {
-      background: #f9fafb;
-      padding: 7px 10px;
-      text-align: left;
-      font-weight: 600;
-      color: #374151;
-      border-bottom: 1px solid #e5e7eb;
-      white-space: nowrap;
-    }
-    .result-table td {
-      padding: 6px 10px;
-      color: #374151;
-      border-bottom: 1px solid #f3f4f6;
-    }
-    .result-table tr:last-child td { border-bottom: none; }
-    .result-table tr:nth-child(even) td { background: #fafafa; }
-
-    /* Suggestions */
+    /* Saran Pertanyaan */
     .suggestions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 0 20px 12px;
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 15px;
     }
-    .suggestion-btn {
-      background: #eff6ff;
-      color: #1a56db;
-      border: 1px solid #bfdbfe;
-      border-radius: 999px;
-      padding: 5px 13px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: background 0.15s;
+    .sugg-btn {
+      background: #e0e7ff; color: #1e40af; border: 1px solid #bfdbfe;
+      padding: 6px 12px; border-radius: 15px; font-size: 12px; cursor: pointer;
     }
-    .suggestion-btn:hover { background: #dbeafe; }
+    .sugg-btn:hover { background: #bfdbfe; }
 
-    /* Input area */
-    .input-area {
-      padding: 12px 16px;
-      border-top: 1px solid #e5e7eb;
-      display: flex;
-      gap: 10px;
-      align-items: flex-end;
+    /* Area Chat */
+    #chatArea {
+      background: white; border: 1px solid #ccc; height: 400px;
+      overflow-y: auto; padding: 15px; margin-bottom: 10px; border-radius: 5px;
     }
-    .input-area textarea {
-      flex: 1;
-      border: 1.5px solid #d1d5db;
-      border-radius: 10px;
-      padding: 10px 13px;
-      font-size: 14px;
-      resize: none;
-      outline: none;
-      line-height: 1.5;
-      max-height: 120px;
-      overflow-y: auto;
-      transition: border-color 0.15s;
-      font-family: inherit;
-    }
-    .input-area textarea:focus { border-color: #1a56db; }
-    .send-btn {
-      background: #1a56db;
-      color: #fff;
-      border: none;
-      border-radius: 10px;
-      width: 44px; height: 44px;
-      font-size: 20px;
-      cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: background 0.15s;
-      flex-shrink: 0;
-    }
-    .send-btn:hover:not(:disabled) { background: #1e40af; }
-    .send-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+    .msg { margin-bottom: 15px; padding: 10px; border-radius: 5px; line-height: 1.4; }
+    .user { background: #dbeafe; text-align: right; }
+    .bot { background: #f3f4f6; }
+    
+    /* Input Area */
+    .input-box { display: flex; gap: 10px; }
+    input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+    button.send-btn { padding: 10px 20px; background: #2563eb; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button.send-btn:disabled { background: #9ca3af; }
 
-    /* Typing indicator */
-    .typing { display: flex; gap: 5px; align-items: center; padding: 6px 2px; }
-    .typing span {
-      width: 7px; height: 7px; border-radius: 50%; background: #9ca3af;
-      animation: blink 1.2s infinite;
+    /* Tabel & Detail Teknis */
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+    th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+    th { background: #eee; }
+    details { margin-top: 10px; font-size: 12px; background: #e5e7eb; padding: 10px; border-radius: 5px; }
+
+    /* Modal / Pop-up Skema */
+    .modal {
+      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000;
     }
-    .typing span:nth-child(2) { animation-delay: 0.2s; }
-    .typing span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes blink {
-      0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
-      40%           { opacity: 1;   transform: scale(1.1); }
+    .modal-content {
+      background: white; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px;
+      max-height: 80vh; overflow-y: auto; position: relative;
+    }
+    .close-btn {
+      position: absolute; top: 15px; right: 20px; font-size: 20px;
+      cursor: pointer; color: red; font-weight: bold;
+    }
+    pre.schema-text {
+      background: #1e293b; color: #e2e8f0; padding: 15px; border-radius: 5px;
+      font-size: 11px; white-space: pre-wrap; font-family: monospace;
+    }
+    .msg.bot ul, .msg.bot ol {
+      margin-left: 20px;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+    .msg.bot p {
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-<div class="container">
 
-  <!-- Header -->
-  <div class="header">
-    <div class="header-icon">🏥</div>
-    <div>
-      <div class="header-title">Asisten Inventori Kesehatan</div>
-      <div class="header-sub">Tanya apa saja tentang data inventori dalam Bahasa Indonesia</div>
-    </div>
-    <div class="status-dot" id="statusDot"></div>
-    <div class="status-text" id="statusText">Menghubungkan...</div>
+  <div class="header-container">
+    <h2>Asisten Inventori</h2>
+    <button class="schema-btn" onclick="openModal()">📄 Lihat Skema DB</button>
   </div>
+  <div id="status">Memeriksa koneksi server...</div>
 
-  <!-- Chat -->
-  <div class="chat-area" id="chatArea">
-    <div class="message bot">
-      <div class="avatar">🤖</div>
-      <div class="bubble">
-        Halo! Saya asisten untuk sistem inventori alat kesehatan. Anda bisa bertanya tentang
-        stok barang, penjualan, transfer antar gudang, atau data lainnya.
-        <br><br>Contoh pertanyaan yang bisa Anda coba 👇
-      </div>
-    </div>
-  </div>
-
-  <!-- Suggestion chips -->
   <div class="suggestions" id="suggestions">
-    <button class="suggestion-btn" onclick="sendSuggestion(this)">Berapa total barang aktif?</button>
-    <button class="suggestion-btn" onclick="sendSuggestion(this)">Tampilkan stok masker di semua gudang</button>
-    <button class="suggestion-btn" onclick="sendSuggestion(this)">Gudang mana yang penjualannya paling tinggi?</button>
-    <button class="suggestion-btn" onclick="sendSuggestion(this)">Total pendapatan per bulan tahun 2024</button>
-    <button class="suggestion-btn" onclick="sendSuggestion(this)">Barang apa yang hampir kedaluwarsa?</button>
+    <button class="sugg-btn" onclick="useSuggestion(this)">Coba sebutkan 3 nama barang beserta stoknya</button>
+    <button class="sugg-btn" onclick="useSuggestion(this)">Gudang mana yang penjualannya paling tinggi?</button>
+    <button class="sugg-btn" onclick="useSuggestion(this)">Barang apa saja yang aktif?</button>
   </div>
 
-  <!-- Input -->
-  <div class="input-area">
-    <textarea id="questionInput" rows="1"
-      placeholder="Ketik pertanyaan Anda..."
-      onkeydown="handleKey(event)"
-      oninput="autoResize(this)"></textarea>
-    <button class="send-btn" id="sendBtn" onclick="sendQuestion()" title="Kirim">➤</button>
+  <div id="chatArea">
+    <div class="msg bot">
+      Halo! Silakan ketik pertanyaan Anda atau pilih saran pertanyaan di atas.
+    </div>
   </div>
 
-</div>
+  <div class="input-box">
+    <input type="text" id="questionInput" placeholder="Ketik pertanyaan di sini..." onkeypress="handleEnter(event)">
+    <button id="sendBtn" class="send-btn" onclick="sendQuestion()">Kirim</button>
+  </div>
+
+  <div id="schemaModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" onclick="closeModal()">&times;</span>
+      <h3 style="margin-top:0;">Deskripsi Skema Database (schema_description.txt)</h3>
+      <p style="font-size:12px; color:#666;">Teks di bawah ini adalah panduan yang disuntikkan ke prompt LLM agar AI memahami struktur database sebelum membuat kueri SQL.</p>
+      <pre class="schema-text">
+=============================================================================
+DESKRIPSI SKEMA DATABASE: inventory_kesehatan
+Sistem Manajemen Inventori Alat Kesehatan Multi-Gudang
+=============================================================================
+
+ARSITEKTUR SISTEM:
+Terdapat dua sistem yang berjalan bersamaan:
+- Sistem 1 (Aplikasi Inventory): melakukan CRUD, termasuk meng-UPDATE
+  batch_stok.jumlah setiap ada penjualan, transfer, atau restock baru.
+- Sistem 2 (Smart Assistant / kamu): hanya READ ONLY. Membaca data
+  yang sudah dikelola Sistem 1.
+
+KONVENSI PENAMAAN — WAJIB DIIKUTI:
+- Primary key setiap tabel punya nama UNIK, bukan "id" generik.
+  Contoh: gudang_id, barang_id, user_id, penjualan_id, dst.
+- Foreign key di tabel lain mengikuti nama PK yang sama.
+  Contoh: batch_stok.barang_id merujuk ke barang.barang_id
+- JOIN harus simetris: ON b.kategori_id = kb.kategori_id
+- Filter data aktif: WHERE aktif = TRUE (atau aktif = 1)
+- Hanya boleh membuat SELECT query. Dilarang INSERT, UPDATE, DELETE, DROP.
+
+MENGHITUNG TOTAL STOK:
+  Gunakan v_total_stok (kolom stok_sekarang)
+  ATAU: SELECT SUM(jumlah) FROM batch_stok WHERE barang_id=X AND gudang_id=Y
+
+MENGHITUNG PENDAPATAN:
+  total per transaksi = jumlah * harga_satuan
+  total keseluruhan   = SUM(jumlah * harga_satuan) FROM penjualan
+      </pre>
+    </div>
+  </div>
 
 <script>
-  // ── Config ──────────────────────────────────────────────────────────────
-  // Ganti dengan URL server kamu (localhost atau URL ngrok)
-  const API_BASE = 'http://localhost:3000';
+  const API_URL = 'http://localhost:3000/api/ask';
 
-  // ── Cek koneksi server ──────────────────────────────────────────────────
-  async function checkHealth() {
-    try {
-      const r = await fetch(`${API_BASE}/api/health`);
-      const d = await r.json();
-      if (d.success) {
-        document.getElementById('statusDot').style.background  = '#4ade80';
-        document.getElementById('statusText').textContent = 'Terhubung';
-      } else throw new Error();
-    } catch {
-      document.getElementById('statusDot').style.background  = '#f87171';
-      document.getElementById('statusText').textContent = 'Tidak terhubung';
-    }
-  }
-  checkHealth();
+  // Cek Koneksi Server
+  fetch('http://localhost:3000/')
+    .then(() => {
+      document.getElementById('status').innerHTML = '✅ Terhubung ke Server Node.js';
+      document.getElementById('status').style.color = 'green';
+    })
+    .catch(() => {
+      document.getElementById('status').innerHTML = '❌ Server Node.js Belum Nyala atau Terkena CORS';
+      document.getElementById('status').style.color = 'red';
+    });
 
-  // ── Helpers ─────────────────────────────────────────────────────────────
-  function autoResize(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
-  }
+  // Fungsi Pop-up Modal Skema
+  function openModal() { document.getElementById('schemaModal').style.display = 'flex'; }
+  function closeModal() { document.getElementById('schemaModal').style.display = 'none'; }
 
-  function handleKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
-  }
-
-  function sendSuggestion(btn) {
-    document.getElementById('questionInput').value = btn.textContent;
+  // Fungsi Saran Pertanyaan
+  function useSuggestion(btn) {
+    document.getElementById('questionInput').value = btn.innerText;
     sendQuestion();
   }
 
-  function scrollBottom() {
-    const area = document.getElementById('chatArea');
-    area.scrollTop = area.scrollHeight;
+  function handleEnter(e) {
+    if (e.key === 'Enter') sendQuestion();
   }
 
-  function addUserMessage(text) {
+  function addMessage(text, sender) {
     const chat = document.getElementById('chatArea');
-    chat.insertAdjacentHTML('beforeend', `
-      <div class="message user">
-        <div class="avatar">👤</div>
-        <div class="bubble">${escHtml(text)}</div>
-      </div>`);
-    scrollBottom();
+    chat.innerHTML += `<div class="msg ${sender}">${text}</div>`;
+    chat.scrollTop = chat.scrollHeight; 
   }
 
-  function addTypingIndicator() {
-    const chat = document.getElementById('chatArea');
-    const div  = document.createElement('div');
-    div.className = 'message bot';
-    div.id = 'typing';
-    div.innerHTML = `<div class="avatar">🤖</div>
-      <div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
-    chat.appendChild(div);
-    scrollBottom();
-    return div;
-  }
-
-  function removeTyping() {
-    document.getElementById('typing')?.remove();
-  }
-
-  function escHtml(s) {
-    return String(s)
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function complexityBadgeClass(c) {
-    return c === 'easy' ? 'green' : c === 'medium' ? 'purple' : 'orange';
-  }
-
-  // ── Render tabel data ────────────────────────────────────────────────────
-  function renderTable(data) {
-    if (!data || data.length === 0) return '';
-    const cols = Object.keys(data[0]);
-    const head = cols.map(c => `<th>${escHtml(c)}</th>`).join('');
-    const rows = data.map(row =>
-      '<tr>' + cols.map(c => `<td>${escHtml(String(row[c] ?? ''))}</td>`).join('') + '</tr>'
-    ).join('');
-    return `<div class="result-table-wrap">
-      <table class="result-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
-    </div>`;
-  }
-
-  // ── Tambah pesan bot ─────────────────────────────────────────────────────
-  function addBotMessage(data) {
-    const chat = document.getElementById('chatArea');
-    const m    = data.metrics || {};
-    const tok  = m.tokens || {};
-    const t    = m.timing_ms || {};
-
-    const tableHtml = renderTable(data.data);
-
-    const badgeComplex = m.complexity
-      ? `<span class="badge ${complexityBadgeClass(m.complexity)}">${m.complexity}</span>` : '';
-
-    const badgeRows    = data.rows_fetched != null
-      ? `<span class="badge">${data.rows_fetched} baris</span>` : '';
-
-    const totalMs   = t.total_ms   ? `${t.total_ms} ms total` : '';
-    const sqlMs     = t.llm_sql_ms ? `SQL: ${t.llm_sql_ms} ms` : '';
-    const dbMs      = t.db_query_ms ? `DB: ${t.db_query_ms} ms` : '';
-    const sumMs     = t.llm_summary_ms ? `Rangkum: ${t.llm_summary_ms} ms` : '';
-
-    const totalTok = tok.total;
-    const costStr  = totalTok ? `$${totalTok.cost_usd} (input: $${totalTok.cost_input_usd} | output: $${totalTok.cost_output_usd})` : '';
-    const tokStr   = totalTok ? `${totalTok.input_tokens} in / ${totalTok.output_tokens} out token` : '';
-
-    chat.insertAdjacentHTML('beforeend', `
-      <div class="message bot">
-        <div class="avatar">🤖</div>
-        <div class="bubble">
-          ${escHtml(data.answer || 'Tidak ada jawaban.')}
-          ${tableHtml}
-          <div class="sql-block">
-            <details>
-              <summary>🔍 Detail teknis</summary>
-              <div class="metrics-row">
-                ${badgeComplex}
-                ${badgeRows}
-                ${totalMs ? `<span class="badge">${totalMs}</span>` : ''}
-              </div>
-              <div class="metrics-row" style="margin-top:4px">
-                ${sqlMs  ? `<span class="badge">${sqlMs}</span>`  : ''}
-                ${dbMs   ? `<span class="badge">${dbMs}</span>`   : ''}
-                ${sumMs  ? `<span class="badge">${sumMs}</span>`  : ''}
-              </div>
-              ${costStr ? `<div class="metrics-row"><span class="badge purple">${costStr}</span></div>` : ''}
-              ${tokStr  ? `<div class="metrics-row"><span class="badge">${tokStr}</span></div>` : ''}
-              <div class="sql-code">${escHtml(data.sql || '')}</div>
-            </details>
-          </div>
-        </div>
-      </div>`);
-    scrollBottom();
-  }
-
-  function addErrorMessage(msg) {
-    const chat = document.getElementById('chatArea');
-    chat.insertAdjacentHTML('beforeend', `
-      <div class="message bot">
-        <div class="avatar">🤖</div>
-        <div class="bubble error">❌ ${escHtml(msg)}</div>
-      </div>`);
-    scrollBottom();
-  }
-
-  // ── KIRIM PERTANYAAN ─────────────────────────────────────────────────────
   async function sendQuestion() {
-    const input    = document.getElementById('questionInput');
-    const sendBtn  = document.getElementById('sendBtn');
+    const input = document.getElementById('questionInput');
     const question = input.value.trim();
     if (!question) return;
 
-    // Sembunyikan suggestions setelah pertama kali kirim
+    // Sembunyikan saran setelah diklik agar tidak menuh-menuhin layar
     document.getElementById('suggestions').style.display = 'none';
 
-    addUserMessage(question);
+    addMessage(question, 'user');
     input.value = '';
-    input.style.height = 'auto';
-    sendBtn.disabled = true;
-
-    const typing = addTypingIndicator();
+    document.getElementById('sendBtn').disabled = true;
 
     try {
-      const res  = await fetch(`${API_BASE}/api/ask`, {
-        method:  'POST',
+      const response = await fetch(API_URL, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ question }),
+        body: JSON.stringify({ question: question })
       });
-      const data = await res.json();
-      removeTyping();
-
+      
+      const data = await response.json();
+      
       if (data.success) {
-        addBotMessage(data);
-      } else {
-        addErrorMessage(data.error || 'Terjadi kesalahan pada server.');
-      }
-    } catch (err) {
-      removeTyping();
-      addErrorMessage('Tidak dapat terhubung ke server. Pastikan server berjalan.');
-    }
+        let botResponse = `<strong>Jawaban:</strong><br> ${marked.parse(data.answer)}`;
+        
+        // Buat tabel jika ada data
+        if (data.data && data.data.length > 0) {
+          const cols = Object.keys(data.data[0]);
+          let table = '<table><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+          data.data.forEach(row => {
+            table += '<tr>' + cols.map(c => `<td>${row[c]}</td>`).join('') + '</tr>';
+          });
+          table += '</table>';
+          botResponse += table;
+        }
 
-    sendBtn.disabled = false;
-    input.focus();
+        // Tampilkan metrik
+        const metrics = data.metrics || {};
+        botResponse += `
+          <details>
+            <summary>Lihat Metrik & Kueri SQL</summary>
+            <b>SQL:</b> <span style="font-family: monospace;">${data.sql}</span><br>
+            <b>Kompleksitas:</b> ${metrics.complexity}<br>
+            <b>Waktu Total:</b> ${metrics.timing_ms?.total_ms} ms<br>
+            <b>Token Dipakai:</b> ${metrics.tokens?.total?.input_tokens} input / ${metrics.tokens?.total?.output_tokens} output<br>
+            <b>Estimasi Biaya:</b> $${metrics.tokens?.total?.cost_usd}
+          </details>`;
+          
+        addMessage(botResponse, 'bot');
+      } else {
+        addMessage('Error: ' + (data.error || 'Terjadi kesalahan sistem'), 'bot');
+      }
+    } catch (error) {
+      addMessage('Gagal menghubungi server Node.js. Pastikan server menyala dan CORS diizinkan.', 'bot');
+    }
+    
+    document.getElementById('sendBtn').disabled = false;
   }
 </script>
+
 </body>
 </html>
